@@ -121,6 +121,7 @@ function simple_tri_mesh(nxy, bn, interval)
     # |  \  |  \  |
     # | 1 \ | 3 \ |
     # |____\|____\|
+    nextface = 1;
     for j=1:(ny-1)
         for i=1:(nx-1)
             ei1 = i*2-1 + (j-1)*2*(nx-1); # element index
@@ -130,16 +131,20 @@ function simple_tri_mesh(nxy, bn, interval)
             el[2,ei1] = i + (j-1)*nx + 1;
             el[3,ei1] = i + (j)*nx;
             
-            el[3,ei2] = i + (j-1)*nx + 1;
-            el[1,ei2] = i + (j)*nx + 1;
-            el[2,ei2] = i + (j)*nx;
+            el[1,ei2] = i + (j-1)*nx + 1;
+            el[2,ei2] = i + (j)*nx + 1;
+            el[3,ei2] = i + (j)*nx;
             
             # face2node, face2element, element2face, normals
-            f1 = 3*(ei-1)+1 + (j-1); # left face index
-            f2 = f1+1; # bottom
-            f3 = f1+2; # center
-            f4 = f1+3; # right
-            f5 = j==(ny-1) ? Nf-(nx-1)+i : j*3*(nx-1) + j + i*3 - 1; # top
+            # reuse left neighbor's f_right, or allocate new
+            f1 = (i==1) ? nextface : e2f[1,ei2-2]; # left face index
+            if i==1; nextface += 1; end
+            # reuse bottom neighbor's f_top, or allocate new
+            f2 = (j==1) ? nextface : e2f[3,ei1-2*(nx-1)]; # bottom
+            if j==1; nextface += 1; end
+            f3 = nextface; nextface += 1; # diagonal (always new, shared only within this cell)
+            f4 = nextface; nextface += 1; # right
+            f5 = nextface; nextface += 1; # top
             
             f2n[1,f1] = el[3,ei1];
             f2n[2,f1] = el[1,ei1];
@@ -147,27 +152,27 @@ function simple_tri_mesh(nxy, bn, interval)
             f2n[2,f2] = el[2,ei1];
             f2n[1,f3] = el[2,ei1];
             f2n[2,f3] = el[3,ei1];
-            f2n[1,f4] = el[3,ei2];
-            f2n[2,f4] = el[1,ei2];
-            f2n[1,f5] = el[1,ei2];
-            f2n[2,f5] = el[2,ei2];
+            f2n[1,f4] = el[1,ei2];
+            f2n[2,f4] = el[2,ei2];
+            f2n[1,f5] = el[2,ei2];
+            f2n[2,f5] = el[3,ei2];
             
             f2e[2,f1] = ei1;
             f2e[2,f2] = ei1;
             f2e[1,f3] = ei1;
             f2e[2,f3] = ei2;
             f2e[1,f4] = ei2;
-            f2e[1,f4] = ei2;
+            f2e[1,f5] = ei2;
             
             e2f[1,ei1] = f2;
             e2f[2,ei1] = f3;
             e2f[3,ei1] = f1;
-            e2f[1,ei2] = f5;
+            e2f[1,ei2] = f4;
             e2f[2,ei2] = f3;
-            e2f[3,ei2] = f4;
+            e2f[3,ei2] = f5;
             
-            normals[:,f1] = [1,0];
-            normals[:,f2] = [0,1];
+            normals[:,f1] = [-1,0];
+            normals[:,f2] = [0,-1];
             normals[:,f3] = [hy/hd, hx/hd];
             normals[:,f4] = [1,0];
             normals[:,f5] = [0,1];
@@ -180,7 +185,7 @@ function simple_tri_mesh(nxy, bn, interval)
         eright = j*2*(nx-1);
         
         fleft = e2f[3,eleft];
-        fright = e2f[3,eright];
+        fright = e2f[1,eright];
         
         bdryID[fleft] = 1; # always 1
         bdryID[fright] = allbids[2];
@@ -188,13 +193,15 @@ function simple_tri_mesh(nxy, bn, interval)
         # need to change normals, f2e for left side
         normals[:,fleft] = [-1,0];
         f2e[:,fleft] = [eleft, 0];
+        # need to change f2e for right side
+        f2e[:,fright] = [eright, 0];
     end
     for i=1:(nx-1)
         ebottom = i*2-1;
-        etop = nel - 2*(nx-1) + 2*i;
+        etop = nel - 2*(nx-1) + i*2;
         
         fbottom = e2f[1,ebottom];
-        ftop = e2f[1,etop];
+        ftop = e2f[3,etop];
         
         bdryID[fbottom] = allbids[3];
         bdryID[ftop] = allbids[4];
@@ -202,6 +209,8 @@ function simple_tri_mesh(nxy, bn, interval)
         # need to change normals, f2e for bottom side
         normals[:,fbottom] = [0,-1];
         f2e[:,fbottom] = [ebottom, 0];
+        # need to change f2e for top side
+        f2e[:,ftop] = [etop, 0];
     end
     
     mesh = MeshData(Nv, xv, ind, nel, el, etypes, numvert, invind, f2n, f2e, e2f, normals, bdryID); # MeshData struct
