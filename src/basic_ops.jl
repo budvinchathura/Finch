@@ -20,6 +20,37 @@ function sym_inner_op(a,b)
     end
 end
 
+# Tensor(matrix)-vector contraction: (matvec(A,b))_i = sum_j A_ij * b_j
+# Needed because the parser rewrites '*' as the element-wise '.*', so a plain
+# A * b on a tensor coefficient cannot express a real matrix-vector product.
+# A may be given as a d x d matrix, or as a flat length-d^2 vector. The flat
+# form follows the column-major order used to store tensor coefficient values
+# (A_11, A_21, ..., A_d1, A_12, ...), so reshape(A,d,d) recovers the matrix.
+function sym_matvec_op(A, b)
+    if ndims(b) != 1
+        printerr("Unsupported dimensions for: matvec(A,b), b must be a vector, size(b)="*string(size(b)));
+        return b;
+    end
+    d = length(b);
+    if ndims(A) == 2 && size(A) == (d,d)
+        M = A;
+    elseif ndims(A) == 1 && length(A) == d*d
+        M = reshape(A, d, d);
+    else
+        printerr("Unsupported dimensions for: matvec(A,b), sizes: A="*string(size(A))*", b="*string(size(b))*")");
+        return b;
+    end
+    result = Array{Basic,1}(undef, d);
+    for i=1:d
+        s = Basic(0);
+        for j=1:d
+            s += M[i,j] * b[j];
+        end
+        result[i] = s;
+    end
+    return result;
+end
+
 function sym_cross_op(a,b)
     if size(a) == size(b)
         if size(a) == (1,) # scalar
@@ -765,19 +796,19 @@ end
 
 # Load them into the global arrays
 function load_basic_ops()
-    op_names = [:dot, :inner, :cross, :transpose, :surface, :boundary, :dirichletBoundary, :neumannBoundary, :ave, :jump, 
+    op_names = [:dot, :inner, :cross, :transpose, :surface, :boundary, :dirichletBoundary, :neumannBoundary, :ave, :jump,
                 :normal, :trueNormal, :distanceToBoundary, :dirichletValue, :neumannValue, :elementDiameter, :elementVolume,
                 :Dt, :deriv, :grad, :div, :curl, :laplacian,
                 :left, :right, :central, :neighborhood, :upwind, :upwindA, :burgerGodunov,
-                :exp, :sin, :cos, :tan, :abs, :sinh, :cosh, :tanh];
+                :exp, :sin, :cos, :tan, :abs, :sinh, :cosh, :tanh, :matvec];
     _handles = [sym_dot_op, sym_inner_op, sym_cross_op, sym_transpose_op, sym_surface_op, sym_boundary_op, sym_dirichletBoundary_op,
-                sym_neumannBoundary_op, sym_ave_op, sym_jump_op, 
+                sym_neumannBoundary_op, sym_ave_op, sym_jump_op,
                 sym_normal_op, sym_trueNormal_op, sym_distanceToBoundary_op, sym_dirichletValue_op, sym_neumannValue_op,
                 sym_elementDiameter_op, sym_elementVolume_op,
-                sym_Dt_op, sym_deriv_op, sym_grad_op, 
+                sym_Dt_op, sym_deriv_op, sym_grad_op,
                 sym_div_op, sym_curl_op, sym_laplacian_op,
                 sym_left_op, sym_right_op, sym_central_op, sym_neighborhood_op, sym_upwind_op, sym_upwindA_op, sym_burgerGodunov_op,
-                sym_exp_op, sym_sin_op, sym_cos_op, sym_tan_op, sym_abs_op, sym_sinh_op, sym_cosh_op, sym_tanh_op];
+                sym_exp_op, sym_sin_op, sym_cos_op, sym_tan_op, sym_abs_op, sym_sinh_op, sym_cosh_op, sym_tanh_op, sym_matvec_op];
     ops = Vector{SymOperator}(undef,0);
     for i=1:length(op_names)
         push!(ops, SymOperator(op_names[i], _handles[i]));
