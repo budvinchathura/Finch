@@ -1528,6 +1528,20 @@ function remove_duplicate_nodes(nodes::Matrix, loc2glb::Matrix; tol=1e-12, scale
     # Strategy: divide nodes into bins compare against nodes in bin
     tmpNnodes = size(nodes,2);
     dim = size(nodes,1);
+
+    # Choose the bin subdivision depth adaptively so that leaf bins hold roughly
+    # mincount nodes. The partitioning caps the number of bins at (2^dim)^depth,
+    # so a fixed depth leaves O(tmpNnodes / bincount) nodes in each bin for large
+    # meshes, making the within-bin O(k^2) duplicate search quadratic in the node
+    # count. Grow depth as needed (never below the requested value, so small
+    # meshes are unchanged); recursion still terminates early via mincount, and
+    # the cap keeps pathological (many-coincident) inputs from recursing forever.
+    bins_per_level = 2^dim;
+    while bins_per_level^depth * mincount < tmpNnodes && depth < 25
+        depth += 1;
+    end
+    log_entry("Node dedup: "*string(tmpNnodes)*" nodes, using bin depth "*string(depth), 3);
+
     replace_with = zeros(Int, tmpNnodes); # holds index of replacement node being kept. 0 if this is kept.
     abins = zeros(Int, tmpNnodes);
     bin_ends = [tmpNnodes]; # The last index of each bin
