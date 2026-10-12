@@ -140,7 +140,7 @@ function simple_tri_mesh(nxy, bn, interval)
             f1 = (i==1) ? nextface : e2f[1,ei2-2]; # left face index
             if i==1; nextface += 1; end
             # reuse bottom neighbor's f_top, or allocate new
-            f2 = (j==1) ? nextface : e2f[3,ei1-2*(nx-1)]; # bottom
+            f2 = (j==1) ? nextface : e2f[3,ei2-2*(nx-1)]; # bottom
             if j==1; nextface += 1; end
             f3 = nextface; nextface += 1; # diagonal (always new, shared only within this cell)
             f4 = nextface; nextface += 1; # right
