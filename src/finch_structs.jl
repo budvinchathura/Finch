@@ -44,7 +44,7 @@ mutable struct FinchConfig
     linalg_matrixfree::Bool             # Use matrix free methods?
     linalg_iterative::Bool              # Use an iterative solver?
     linalg_iterative_method::String     # GMRES or CG
-    linalg_iterative_pc::String         # AMG, ILU, NONE
+    linalg_iterative_pc::String         # AMG, ILU, NONE, LU (LU is PETSc only)
     linalg_iterative_maxiter::Int       # max iters for iterative solver
     linalg_iterative_abstol::Float64    # absolute tolerance
     linalg_iterative_reltol::Float64    # relative tolerance

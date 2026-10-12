@@ -98,15 +98,21 @@ function linear_system_solve!(A::Union{SparseMatrixCSC, LinearMap}, b::Vector, x
         end
         PETSc.assemble(petscA);
         
-        if config.linalg_iterative_pc == "AMG"
-            pcType = "mg";
+        if config.linalg_iterative_pc == "LU"
+            # Direct solve: apply the LU factorization once with no Krylov iterations.
+            ksp = PETSc.KSP(petscA; ksp_type="preonly", pc_type="lu",
+                            ksp_monitor=config.linalg_iterative_verbose);
         else
-            pcType = "ilu";
+            if config.linalg_iterative_pc == "AMG"
+                pcType = "mg";
+            else
+                pcType = "ilu";
+            end
+
+            ksp = PETSc.KSP(petscA; ksp_rtol=config.linalg_iterative_reltol, ksp_atol=config.linalg_iterative_abstol,
+                            ksp_max_it=config.linalg_iterative_maxiter, pc_type=pcType,
+                            ksp_monitor=config.linalg_iterative_verbose); # Options should be available to user
         end
-        
-        ksp = PETSc.KSP(petscA; ksp_rtol=config.linalg_iterative_reltol, ksp_atol=config.linalg_iterative_abstol, 
-                        ksp_max_it=config.linalg_iterative_maxiter, pc_type=pcType, 
-                        ksp_monitor=config.linalg_iterative_verbose); # Options should be available to user
         
         x .= ksp\b;
     end
@@ -203,15 +209,21 @@ function linear_system_solve(A::Union{SparseMatrixCSC, LinearMap}, b::Vector, co
         end
         PETSc.assemble(petscA);
         
-        if config.linalg_iterative_pc == "AMG"
-            pcType = "mg";
+        if config.linalg_iterative_pc == "LU"
+            # Direct solve: apply the LU factorization once with no Krylov iterations.
+            ksp = PETSc.KSP(petscA; ksp_type="preonly", pc_type="lu",
+                            ksp_monitor=config.linalg_iterative_verbose);
         else
-            pcType = "ilu";
+            if config.linalg_iterative_pc == "AMG"
+                pcType = "mg";
+            else
+                pcType = "ilu";
+            end
+
+            ksp = PETSc.KSP(petscA; ksp_rtol=config.linalg_iterative_reltol, ksp_atol=config.linalg_iterative_abstol,
+                            ksp_max_it=config.linalg_iterative_maxiter, pc_type=pcType,
+                            ksp_monitor=config.linalg_iterative_verbose); # Options should be available to user
         end
-        
-        ksp = PETSc.KSP(petscA; ksp_rtol=config.linalg_iterative_reltol, ksp_atol=config.linalg_iterative_abstol, 
-                        ksp_max_it=config.linalg_iterative_maxiter, pc_type=pcType, 
-                        ksp_monitor=config.linalg_iterative_verbose); # Options should be available to user
         
         return ksp\b;
     end
@@ -265,13 +277,13 @@ function semi_matrix_free_solve!(AI::Vector{Int}, AJ::Vector{Int}, AV::Vector{Fl
                 A = sparse(view(AI,1:num_nonzeros), view(AJ,1:num_nonzeros), view(AV,1:num_nonzeros));
                 matvec_linear_operator_function = (y::Vector{Float64}, x::Vector{Float64})->(
                     # send 1
-                    MPI.Bcast!([1], MPI.COMM_WORLD);
+                    MPI.Bcast!([1], 0, MPI.COMM_WORLD);
                     # send x
                     MPI.Scatterv!(MPI.VBuffer(x, chunk_sizes, displacements, MPI.Datatype(Float64)), MPI.IN_PLACE, MPI.COMM_WORLD);
                     # do local matvec
                     mul!(b, A, view(x,1:owned_dofs));
                     # send 2
-                    MPI.Bcast!([2], MPI.COMM_WORLD);
+                    MPI.Bcast!([2], 0, MPI.COMM_WORLD);
                     # recieve results
                     MPI.Gatherv!(b, MPI.VBuffer(y, chunk_sizes, displacements, MPI.Datatype(Float64)), 0, MPI.COMM_WORLD);
                     nothing;
@@ -304,11 +316,11 @@ function semi_matrix_free_solve!(AI::Vector{Int}, AJ::Vector{Int}, AV::Vector{Fl
                 
                 # scatter the solution
                 # send 1
-                MPI.Bcast!([1], MPI.COMM_WORLD);
+                MPI.Bcast!([1], 0, MPI.COMM_WORLD);
                 # send solution
                 MPI.Scatterv!(MPI.VBuffer(full_solution, chunk_sizes, displacements, MPI.Datatype(Float64)), MPI.IN_PLACE, MPI.COMM_WORLD);
                 # Send the finished command
-                MPI.Bcast!([3], MPI.COMM_WORLD);
+                MPI.Bcast!([3], 0, MPI.COMM_WORLD);
                 
                 for i=1:owned_dofs
                     solution[i] = full_solution[i];
@@ -328,7 +340,7 @@ function semi_matrix_free_solve!(AI::Vector{Int}, AJ::Vector{Int}, AV::Vector{Fl
                 last_command = [0];
                 while last_command < 3
                     # get command
-                    MPI.Bcast!(last_command, MPI.COMM_WORLD);
+                    MPI.Bcast!(last_command, 0, MPI.COMM_WORLD);
                     if last_command == 1 # receive vector from root
                         MPI.Scatterv!(nothing, b, MPI.COMM_WORLD);
                         # b now holds the incoming vector.
